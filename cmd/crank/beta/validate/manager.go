@@ -199,7 +199,7 @@ func (m *Manager) CacheAndLoad(cleanCache bool) error {
 		return errors.Wrapf(err, "cannot cache package dependencies")
 	}
 
-	schemas, err := m.cache.Load()
+	schemas, err := m.loadDependencies()
 	if err != nil {
 		return errors.Wrapf(err, "cannot load cache")
 	}
@@ -234,16 +234,20 @@ func (m *Manager) addDependencies(confs map[string]*metav1.Configuration) error 
 			m.confs[image] = cfg // update the configuration
 		}
 
-		deps := cfg.Spec.MetaSpec.DependsOn
+		deps := cfg.Spec.DependsOn
 		for _, dep := range deps {
 			image := ""
-			if dep.Configuration != nil { //nolint:gocritic // switch is not suitable here
+			switch {
+			case dep.Package != nil:
+				image = *dep.Package
+			case dep.Configuration != nil:
 				image = *dep.Configuration
-			} else if dep.Provider != nil {
+			case dep.Provider != nil:
 				image = *dep.Provider
-			} else if dep.Function != nil {
+			case dep.Function != nil:
 				image = *dep.Function
 			}
+
 			if len(image) > 0 {
 				image = fmt.Sprintf(imageFmt, image, dep.Version)
 				m.deps[image] = true
@@ -307,4 +311,16 @@ func (m *Manager) cacheDependencies() error {
 	}
 
 	return nil
+}
+
+func (m *Manager) loadDependencies() ([]*unstructured.Unstructured, error) {
+	schemas := make([]*unstructured.Unstructured, 0)
+	for dep := range m.deps {
+		cachedSchema, err := m.cache.Load(dep)
+		if err != nil {
+			return nil, errors.Wrapf(err, "cannot load cache for %s", dep)
+		}
+		schemas = append(schemas, cachedSchema...)
+	}
+	return schemas, nil
 }
