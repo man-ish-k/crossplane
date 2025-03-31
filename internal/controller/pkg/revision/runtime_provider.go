@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
@@ -99,18 +98,7 @@ func (h *ProviderHooks) Pre(ctx context.Context, pkg runtime.Object, pr v1.Packa
 	// post establish.
 	// As a rule of thumb, we create objects named after the package in the
 	// pre hook and objects named after the package revision in the post hook.
-	svc := build.Service(
-		ServiceWithSelectors(providerSelectors(providerMeta, pr)),
-		ServiceWithAdditionalPorts([]corev1.ServicePort{
-			{
-				Name:       webhookPortName,
-				Protocol:   corev1.ProtocolTCP,
-				Port:       servicePort,
-				TargetPort: intstr.FromString(webhookPortName),
-			},
-		}),
-	)
-
+	svc := build.Service(ServiceWithSelectors(providerSelectors(providerMeta, pr)))
 	if err := h.client.Apply(ctx, svc); err != nil {
 		return errors.Wrap(err, errApplyProviderService)
 	}

@@ -44,19 +44,8 @@ type LockPackage struct {
 	// Name corresponds to the name of the package revision for this package.
 	Name string `json:"name"`
 
-	// APIVersion of the package.
-	// +optional
-	APIVersion *string `json:"apiVersion,omitempty"`
-
-	// Kind of the package (not the kind of the package revision).
-	// +optional
-	Kind *string `json:"kind,omitempty"`
-
-	// Type is the type of package.
-	// +kubebuilder:validation:Enum=Configuration;Provider;Function
-	// +optional
-	// Deprecated: Specify an apiVersion and kind instead.
-	Type *PackageType `json:"type"`
+	// Type is the type of package. Can be either Configuration or Provider.
+	Type PackageType `json:"type"`
 
 	// Source is the OCI image name without a tag or digest.
 	Source string `json:"source"`
@@ -129,19 +118,8 @@ type Dependency struct {
 	// Package is the OCI image name without a tag or digest.
 	Package string `json:"package"`
 
-	// APIVersion of the package.
-	// +optional
-	APIVersion *string `json:"apiVersion,omitempty"`
-
-	// Kind of the package (not the kind of the package revision).
-	// +optional
-	Kind *string `json:"kind,omitempty"`
-
 	// Type is the type of package. Can be either Configuration or Provider.
-	// +kubebuilder:validation:Enum=Configuration;Provider;Function
-	// +optional
-	// Deprecated: Specify an apiVersion and kind instead.
-	Type *PackageType `json:"type"`
+	Type PackageType `json:"type"`
 
 	// Constraints is a valid semver range or a digest, which will be used to select a valid
 	// dependency version.

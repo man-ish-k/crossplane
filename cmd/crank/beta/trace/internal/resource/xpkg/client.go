@@ -24,7 +24,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
@@ -221,15 +220,29 @@ func (kc *Client) getRevisions(ctx context.Context, xpkg *resource.Resource) ([]
 	return resources, nil
 }
 
+// getPackageDetails returns the package details for the given package type.
+func getPackageDetails(t pkgv1beta1.PackageType) (string, string, pkgv1.PackageRevision, error) {
+	switch t {
+	case pkgv1beta1.ProviderPackageType:
+		return pkgv1.ProviderKind, pkgv1.ProviderGroupVersionKind.GroupVersion().String(), &pkgv1.ProviderRevision{}, nil
+	case pkgv1beta1.ConfigurationPackageType:
+		return pkgv1.ConfigurationKind, pkgv1.ConfigurationGroupVersionKind.GroupVersion().String(), &pkgv1.ConfigurationRevision{}, nil
+	case pkgv1beta1.FunctionPackageType:
+		return pkgv1.FunctionKind, pkgv1.FunctionGroupVersionKind.GroupVersion().String(), &pkgv1.FunctionRevision{}, nil
+	default:
+		return "", "", nil, errors.Errorf("unknown package dependency type %s", t)
+	}
+}
+
 // getDependencyRef returns the dependency reference for the given package,
 // based on the lock file.
-func (kc *Client) getDependencyRef(ctx context.Context, d pkgv1beta1.Dependency, pkgs []pkgv1beta1.LockPackage) (*v1.ObjectReference, error) {
+func (kc *Client) getDependencyRef(ctx context.Context, lock *pkgv1beta1.Lock, pkgType pkgv1beta1.PackageType, pkg string) (*v1.ObjectReference, error) {
 	// if we don't find a package to match the current dependency, which
 	// can happen during initial installation when dependencies are
 	// being discovered and fetched. We'd still like to show something
 	// though, so try to make the package name pretty
-	name := xpkg.ToDNSLabel(d.Package)
-	if pkgref, err := pkgname.ParseReference(d.Package); err == nil {
+	name := xpkg.ToDNSLabel(pkg)
+	if pkgref, err := pkgname.ParseReference(pkg); err == nil {
 		name = xpkg.ToDNSLabel(pkgref.Context().RepositoryStr())
 	}
 
@@ -240,51 +253,32 @@ func (kc *Client) getDependencyRef(ctx context.Context, d pkgv1beta1.Dependency,
 	// - pkgrev B
 	// - pkgrev C
 
-	rev := &unstructured.Unstructured{}
-	var pkgKind string
-	switch {
-	case d.APIVersion != nil && d.Kind != nil:
-		rev.SetAPIVersion(*d.APIVersion)
-		rev.SetKind(*d.Kind + "Revision")
-		pkgKind = *d.Kind
-	case ptr.Deref(d.Type, "") == pkgv1beta1.ConfigurationPackageType:
-		rev.SetAPIVersion(pkgv1.ConfigurationRevisionGroupVersionKind.GroupVersion().String())
-		rev.SetKind(pkgv1.ConfigurationRevisionKind)
-		pkgKind = pkgv1.ConfigurationKind
-	case ptr.Deref(d.Type, "") == pkgv1beta1.ProviderPackageType:
-		rev.SetAPIVersion(pkgv1.ProviderRevisionGroupVersionKind.GroupVersion().String())
-		rev.SetKind(pkgv1.ProviderRevisionKind)
-		pkgKind = pkgv1.ProviderKind
-	case ptr.Deref(d.Type, "") == pkgv1beta1.FunctionPackageType:
-		rev.SetAPIVersion(pkgv1.FunctionRevisionGroupVersionKind.GroupVersion().String())
-		rev.SetKind(pkgv1.FunctionRevisionKind)
-		pkgKind = pkgv1.FunctionKind
-	default:
-		return nil, errors.Errorf("cannot determine dependency type - you must specify either a valid type, or an explicit apiVersion and kind")
+	// find the current dependency from all the packages in the lock file
+	pkgKind, apiVersion, revision, err := getPackageDetails(pkgType)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get package details for dependency %s", pkg)
 	}
 
-	for _, p := range pkgs {
-		if p.Source != d.Package {
-			continue
-		}
-
-		// current package source matches the package of the dependency, let's get the full object
-		if err := kc.client.Get(ctx, types.NamespacedName{Name: p.Name}, rev); xpresource.IgnoreNotFound(err) != nil {
-			return nil, err
-		}
-
-		// look for the owner of this package revision, that's its parent package
-		for _, or := range rev.GetOwnerReferences() {
-			if or.Kind == pkgKind && or.Controller != nil && *or.Controller {
-				name = or.Name
-				break
+	for _, p := range lock.Packages {
+		if p.Source == pkg {
+			// current package source matches the package of the dependency, let's get the full object
+			if err = kc.client.Get(ctx, types.NamespacedName{Name: p.Name}, revision); xpresource.IgnoreNotFound(err) != nil {
+				return nil, err
 			}
+
+			// look for the owner of this package revision, that's its parent package
+			for _, or := range revision.GetOwnerReferences() {
+				if or.Kind == pkgKind && or.Controller != nil && *or.Controller {
+					name = or.Name
+					break
+				}
+			}
+			break
 		}
-		break
 	}
 
 	return &v1.ObjectReference{
-		APIVersion: rev.GetAPIVersion(),
+		APIVersion: apiVersion,
 		Kind:       pkgKind,
 		Name:       name,
 	}, nil
@@ -322,7 +316,7 @@ func (kc *Client) getPackageDeps(ctx context.Context, node *resource.Resource, l
 			}
 		}
 
-		dep, err := kc.getDependencyRef(ctx, d, lock.Packages)
+		dep, err := kc.getDependencyRef(ctx, lock, d.Type, d.Package)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get dependency ref %s", d.Package)
 		}

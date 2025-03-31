@@ -25,7 +25,6 @@ import (
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/errors"
-	"github.com/crossplane/crossplane-runtime/pkg/fieldpath"
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 	"github.com/crossplane/crossplane-runtime/pkg/resource/unstructured/claim"
@@ -314,15 +313,18 @@ func (s *ServerSideCompositeSyncer) Sync(ctx context.Context, cm *claim.Unstruct
 	}
 
 	// Preserve Crossplane machinery, like status conditions.
-	cmcs := xpv1.ConditionedStatus{}
-	_ = fieldpath.Pave(cm.Object).GetValueInto("status", &cmcs)
+	synced := cm.GetCondition(xpv1.TypeSynced)
+	ready := cm.GetCondition(xpv1.TypeReady)
 	pub := cm.GetConnectionDetailsLastPublishedTime()
 
 	// Update the claim's user-defined status fields to match the XRs.
 	cm.Object["status"] = withoutKeys(xrStatus, xcrd.GetPropFields(xcrd.CompositeResourceStatusProps())...)
 
-	if cmcs.Conditions != nil {
-		cm.SetConditions(cmcs.Conditions...)
+	if !synced.Equal(xpv1.Condition{}) {
+		cm.SetConditions(synced)
+	}
+	if !ready.Equal(xpv1.Condition{}) {
+		cm.SetConditions(ready)
 	}
 	if pub != nil {
 		cm.SetConnectionDetailsLastPublishedTime(pub)

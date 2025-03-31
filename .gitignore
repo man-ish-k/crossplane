@@ -9,8 +9,6 @@ cover.out
 /.vendor-new
 .DS_Store
 Zone.Identifier
-.tmp-earthly-out/
-build/
 
 # gitlab example
 # exclude files generate by running the example

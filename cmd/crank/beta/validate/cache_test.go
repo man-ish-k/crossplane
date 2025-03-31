@@ -149,7 +149,6 @@ func TestLocalCacheInit(t *testing.T) {
 func TestLocalCacheLoad(t *testing.T) {
 	type args struct {
 		cacheDir string
-		image    string
 	}
 	type want struct {
 		schemas []*unstructured.Unstructured
@@ -162,10 +161,7 @@ func TestLocalCacheLoad(t *testing.T) {
 	}{
 		"Load": {
 			reason: "Load should load the schemas from the cache",
-			args: args{
-				cacheDir: "./testdata/crds",
-				image:    "xpkg.upbound.io/provider-dummy:v1.0.0",
-			},
+			args:   args{cacheDir: "./testdata/crds"},
 			want: want{
 				schemas: []*unstructured.Unstructured{
 					{
@@ -197,7 +193,7 @@ func TestLocalCacheLoad(t *testing.T) {
 				cacheDir: tc.args.cacheDir,
 			}
 
-			got, err := c.Load(tc.args.image)
+			got, err := c.Load()
 			if diff := cmp.Diff(tc.want.schemas, got); diff != "" {
 				t.Errorf("%s\nLoad(...): -want, +got:\n%s", tc.reason, diff)
 			}

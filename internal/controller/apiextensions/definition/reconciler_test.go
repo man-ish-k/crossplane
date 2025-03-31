@@ -50,8 +50,7 @@ type MockEngine struct {
 	MockGetWatches      func(name string) ([]engine.WatchID, error)
 	MockStartWatches    func(name string, ws ...engine.Watch) error
 	MockStopWatches     func(ctx context.Context, name string, ws ...engine.WatchID) (int, error)
-	MockGetCached       func() client.Client
-	MockGetUncached     func() client.Client
+	MockGetClient       func() client.Client
 	MockGetFieldIndexer func() client.FieldIndexer
 }
 
@@ -79,12 +78,8 @@ func (m *MockEngine) StopWatches(ctx context.Context, name string, ws ...engine.
 	return m.MockStopWatches(ctx, name, ws...)
 }
 
-func (m *MockEngine) GetCached() client.Client {
-	return m.MockGetCached()
-}
-
-func (m *MockEngine) GetUncached() client.Client {
-	return m.MockGetUncached()
+func (m *MockEngine) GetClient() client.Client {
+	return m.MockGetClient()
 }
 
 func (m *MockEngine) GetFieldIndexer() client.FieldIndexer {
@@ -693,8 +688,7 @@ func TestReconcile(t *testing.T) {
 						MockStart: func(_ string, _ ...engine.ControllerOption) error {
 							return errBoom
 						},
-						MockGetCached:   func() client.Client { return test.NewMockClient() },
-						MockGetUncached: func() client.Client { return test.NewMockClient() },
+						MockGetClient: func() client.Client { return test.NewMockClient() },
 					}),
 				},
 			},
@@ -735,8 +729,7 @@ func TestReconcile(t *testing.T) {
 						MockStartWatches: func(_ string, _ ...engine.Watch) error {
 							return errBoom
 						},
-						MockGetCached:   func() client.Client { return test.NewMockClient() },
-						MockGetUncached: func() client.Client { return test.NewMockClient() },
+						MockGetClient: func() client.Client { return test.NewMockClient() },
 					}),
 				},
 			},
@@ -782,8 +775,7 @@ func TestReconcile(t *testing.T) {
 						MockIsRunning:    func(_ string) bool { return false },
 						MockStart:        func(_ string, _ ...engine.ControllerOption) error { return nil },
 						MockStartWatches: func(_ string, _ ...engine.Watch) error { return nil },
-						MockGetCached:    func() client.Client { return test.NewMockClient() },
-						MockGetUncached:  func() client.Client { return test.NewMockClient() },
+						MockGetClient:    func() client.Client { return test.NewMockClient() },
 					}),
 				},
 			},
@@ -842,8 +834,7 @@ func TestReconcile(t *testing.T) {
 						MockStop:         func(_ context.Context, _ string) error { return nil },
 						MockIsRunning:    func(_ string) bool { return false },
 						MockStartWatches: func(_ string, _ ...engine.Watch) error { return nil },
-						MockGetCached:    func() client.Client { return test.NewMockClient() },
-						MockGetUncached:  func() client.Client { return test.NewMockClient() },
+						MockGetClient:    func() client.Client { return test.NewMockClient() },
 					}),
 				},
 			},

@@ -3,7 +3,7 @@ VERSION --try --raw-output 0.8
 
 PROJECT crossplane/crossplane
 
-ARG --global GO_VERSION=1.23.7
+ARG --global GO_VERSION=1.23.3
 
 # reviewable checks that a branch is ready for review. Run it before opening a
 # pull request. It will catch a lot of the things our CI workflow will catch.
@@ -46,19 +46,10 @@ generate:
 
 # e2e runs end-to-end tests. See test/e2e/README.md for details.
 e2e:
-  ARG TARGETARCH
-  ARG TARGETOS
-  ARG GOARCH=${TARGETARCH}
-  ARG GOOS=${TARGETOS}
   ARG FLAGS="-test-suite=base"
-  # Using earthly image to allow compatibility with different development environments e.g. WSL
-  FROM earthly/dind:alpine-3.20-docker-26.1.5-r0
-  RUN wget https://dl.google.com/go/go${GO_VERSION}.${GOOS}-${GOARCH}.tar.gz
-  RUN tar -C /usr/local -xzf go${GO_VERSION}.${GOOS}-${GOARCH}.tar.gz
-  ENV GOTOOLCHAIN=local
-  ENV GOPATH /go
-  ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
-  RUN apk add --no-cache jq
+  # Docker installs faster on Alpine, and we only need Go for go tool test2json.
+  FROM golang:${GO_VERSION}-alpine3.20
+  RUN apk add --no-cache docker jq
   COPY +helm-setup/helm /usr/local/bin/helm
   COPY +kind-setup/kind /usr/local/bin/kind
   COPY +gotestsum-setup/gotestsum /usr/local/bin/gotestsum
@@ -85,7 +76,6 @@ hack:
   # TODO(negz): This could run an interactive shell inside a temporary container
   # once https://github.com/earthly/earthly/issues/3206 is fixed.
   ARG USERPLATFORM
-  ARG SIMULATE_CROSSPLANE_VERSION=v0.0.0-hack
   ARG XPARGS="--debug"
   LOCALLY
   WAIT
@@ -94,15 +84,15 @@ hack:
   COPY --platform=${USERPLATFORM} +helm-setup/helm .hack/helm
   COPY --platform=${USERPLATFORM} +kind-setup/kind .hack/kind
   COPY (+helm-build/output --CROSSPLANE_VERSION=v0.0.0-hack) .hack/charts
-  WITH DOCKER --load crossplane-hack/crossplane:${SIMULATE_CROSSPLANE_VERSION}=(+image --CROSSPLANE_VERSION=${SIMULATE_CROSSPLANE_VERSION})
+  WITH DOCKER --load crossplane-hack/crossplane:hack=+image
     RUN \
       .hack/kind create cluster --name crossplane-hack && \
-      .hack/kind load docker-image --name crossplane-hack crossplane-hack/crossplane:${SIMULATE_CROSSPLANE_VERSION} && \
+      .hack/kind load docker-image --name crossplane-hack crossplane-hack/crossplane:hack && \
       .hack/helm install --create-namespace --namespace crossplane-system crossplane .hack/charts/crossplane-0.0.0-hack.tgz \
-        --set "image.pullPolicy=Never,image.repository=crossplane-hack/crossplane,image.tag=${SIMULATE_CROSSPLANE_VERSION}" \
+        --set "image.pullPolicy=Never,image.repository=crossplane-hack/crossplane,image.tag=hack" \
         --set "args={${XPARGS}}"
   END
-  RUN docker image rm crossplane-hack/crossplane:${SIMULATE_CROSSPLANE_VERSION}
+  RUN docker image rm crossplane-hack/crossplane:hack
   RUN rm -rf .hack
 
 # unhack deletes the kind cluster created by the hack target.
@@ -372,7 +362,6 @@ ci-version:
 ci-artifacts:
   BUILD +multiplatform-build \
     --CROSSPLANE_REPO=index.docker.io/crossplane/crossplane \
-    --CROSSPLANE_REPO=ghcr.io/crossplane/crossplane \
     --CROSSPLANE_REPO=xpkg.upbound.io/crossplane/crossplane
 
 # ci-codeql-setup sets up CodeQL for the ci-codeql target.

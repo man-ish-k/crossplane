@@ -33,41 +33,23 @@ func (c *GeneratedFromHubConverter) pV1CrossplaneConstraintsToPV1beta1Crossplane
 func (c *GeneratedFromHubConverter) v1DependencyToV1beta1Dependency(source v1.Dependency) Dependency {
 	var v1beta1Dependency Dependency
 	var pString *string
-	if source.APIVersion != nil {
-		xstring := *source.APIVersion
+	if source.Provider != nil {
+		xstring := *source.Provider
 		pString = &xstring
 	}
-	v1beta1Dependency.APIVersion = pString
+	v1beta1Dependency.Provider = pString
 	var pString2 *string
-	if source.Kind != nil {
-		xstring2 := *source.Kind
+	if source.Configuration != nil {
+		xstring2 := *source.Configuration
 		pString2 = &xstring2
 	}
-	v1beta1Dependency.Kind = pString2
+	v1beta1Dependency.Configuration = pString2
 	var pString3 *string
-	if source.Package != nil {
-		xstring3 := *source.Package
+	if source.Function != nil {
+		xstring3 := *source.Function
 		pString3 = &xstring3
 	}
-	v1beta1Dependency.Package = pString3
-	var pString4 *string
-	if source.Provider != nil {
-		xstring4 := *source.Provider
-		pString4 = &xstring4
-	}
-	v1beta1Dependency.Provider = pString4
-	var pString5 *string
-	if source.Configuration != nil {
-		xstring5 := *source.Configuration
-		pString5 = &xstring5
-	}
-	v1beta1Dependency.Configuration = pString5
-	var pString6 *string
-	if source.Function != nil {
-		xstring6 := *source.Function
-		pString6 = &xstring6
-	}
-	v1beta1Dependency.Function = pString6
+	v1beta1Dependency.Function = pString3
 	v1beta1Dependency.Version = source.Version
 	return v1beta1Dependency
 }
@@ -133,41 +115,23 @@ func (c *GeneratedToHubConverter) v1TypeMetaToV1TypeMeta(source v11.TypeMeta) v1
 func (c *GeneratedToHubConverter) v1beta1DependencyToV1Dependency(source Dependency) v1.Dependency {
 	var v1Dependency v1.Dependency
 	var pString *string
-	if source.APIVersion != nil {
-		xstring := *source.APIVersion
+	if source.Provider != nil {
+		xstring := *source.Provider
 		pString = &xstring
 	}
-	v1Dependency.APIVersion = pString
+	v1Dependency.Provider = pString
 	var pString2 *string
-	if source.Kind != nil {
-		xstring2 := *source.Kind
+	if source.Configuration != nil {
+		xstring2 := *source.Configuration
 		pString2 = &xstring2
 	}
-	v1Dependency.Kind = pString2
+	v1Dependency.Configuration = pString2
 	var pString3 *string
-	if source.Package != nil {
-		xstring3 := *source.Package
+	if source.Function != nil {
+		xstring3 := *source.Function
 		pString3 = &xstring3
 	}
-	v1Dependency.Package = pString3
-	var pString4 *string
-	if source.Provider != nil {
-		xstring4 := *source.Provider
-		pString4 = &xstring4
-	}
-	v1Dependency.Provider = pString4
-	var pString5 *string
-	if source.Configuration != nil {
-		xstring5 := *source.Configuration
-		pString5 = &xstring5
-	}
-	v1Dependency.Configuration = pString5
-	var pString6 *string
-	if source.Function != nil {
-		xstring6 := *source.Function
-		pString6 = &xstring6
-	}
-	v1Dependency.Function = pString6
+	v1Dependency.Function = pString3
 	v1Dependency.Version = source.Version
 	return v1Dependency
 }

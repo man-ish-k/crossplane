@@ -32,7 +32,7 @@ type Cache interface {
 	Store(schemas [][]byte, path string) error
 	Flush() error
 	Init() error
-	Load(image string) ([]*unstructured.Unstructured, error)
+	Load() ([]*unstructured.Unstructured, error)
 	Exists(image string) (string, error)
 }
 
@@ -86,24 +86,26 @@ func (c *LocalCache) Flush() error {
 	return c.fs.RemoveAll(c.cacheDir)
 }
 
-// Load loads schemas from the cache directory.
-// image should be a validate image name with the format: <registry>/<image>:<tag>.
-func (c *LocalCache) Load(image string) ([]*unstructured.Unstructured, error) {
-	cacheImagePath := c.getCachePath(image)
-	loader, err := NewLoader(cacheImagePath)
+// Load loads the schemas from the cache directory.
+func (c *LocalCache) Load() ([]*unstructured.Unstructured, error) {
+	loader, err := NewLoader(c.cacheDir)
 	if err != nil {
-		return nil, errors.Wrapf(err, "cannot create loader from %s", cacheImagePath)
+		return nil, errors.Wrapf(err, "cannot create loader from the path %s", c.cacheDir)
 	}
+
 	schemas, err := loader.Load()
 	if err != nil {
-		return nil, errors.Wrapf(err, "cannot load schemas from %s", cacheImagePath)
+		return nil, errors.Wrapf(err, "cannot load schemas from the path %s", c.cacheDir)
 	}
+
 	return schemas, nil
 }
 
 // Exists checks if the cache contains the image and returns the path if it doesn't exist.
 func (c *LocalCache) Exists(image string) (string, error) {
-	path := c.getCachePath(image)
+	fName := strings.ReplaceAll(image, ":", "@")
+	path := filepath.Join(c.cacheDir, fName)
+
 	_, err := os.Stat(path)
 	if err != nil && os.IsNotExist(err) {
 		return path, nil
@@ -112,10 +114,4 @@ func (c *LocalCache) Exists(image string) (string, error) {
 	}
 
 	return "", nil
-}
-
-// getCachePath transforms an image name to a validate folder path that store schemas.
-func (c *LocalCache) getCachePath(image string) string {
-	cacheImagePath := strings.ReplaceAll(image, ":", "@")
-	return filepath.Join(c.cacheDir, cacheImagePath)
 }

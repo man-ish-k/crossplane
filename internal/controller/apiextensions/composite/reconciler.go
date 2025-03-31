@@ -380,7 +380,7 @@ type compositeResource struct {
 }
 
 // NewReconciler returns a new Reconciler of composite resources.
-func NewReconciler(c, uc client.Client, of resource.CompositeKind, opts ...ReconcilerOption) *Reconciler {
+func NewReconciler(c client.Client, of resource.CompositeKind, opts ...ReconcilerOption) *Reconciler {
 	r := &Reconciler{
 		client: c,
 
@@ -412,7 +412,7 @@ func NewReconciler(c, uc client.Client, of resource.CompositeKind, opts ...Recon
 			ConnectionPublisher: NewAPIFilteredSecretPublisher(c, []string{}),
 		},
 
-		resource: NewPTComposer(c, uc),
+		resource: NewPTComposer(c),
 
 		// Dynamic watches are disabled by default.
 		engine: &NopWatchStarter{},
@@ -433,7 +433,8 @@ func NewReconciler(c, uc client.Client, of resource.CompositeKind, opts ...Recon
 // A Reconciler reconciles composite resources.
 type Reconciler struct {
 	client client.Client
-	gvk    schema.GroupVersionKind
+
+	gvk schema.GroupVersionKind
 
 	revision  revision
 	composite compositeResource
@@ -639,7 +640,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		// considered synced (i.e. severe enough to return a ReconcileError) but
 		// they are severe enough that we probably shouldn't say we successfully
 		// composed resources.
-		log.Debug("Successfully composed resources")
+		r.record.Event(xr, event.Normal(reasonCompose, "Successfully composed resources"))
 	}
 
 	var unready []ComposedResource

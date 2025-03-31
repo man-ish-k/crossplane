@@ -16,11 +16,6 @@ limitations under the License.
 
 package v1
 
-import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
-)
-
 var (
 	_ Pkg = &Configuration{}
 	_ Pkg = &Provider{}
@@ -30,9 +25,6 @@ var (
 // Pkg is a description of a Crossplane package.
 // +k8s:deepcopy-gen=false
 type Pkg interface {
-	runtime.Object
-	metav1.Object
-
 	GetCrossplaneConstraints() *CrossplaneConstraints
 	GetDependencies() []Dependency
 }

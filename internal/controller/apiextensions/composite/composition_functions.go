@@ -47,7 +47,6 @@ import (
 	fnv1 "github.com/crossplane/crossplane/apis/apiextensions/fn/proto/v1"
 	v1 "github.com/crossplane/crossplane/apis/apiextensions/v1"
 	"github.com/crossplane/crossplane/internal/names"
-	"github.com/crossplane/crossplane/internal/xcrd"
 )
 
 // Error strings.
@@ -74,7 +73,6 @@ const (
 	errFmtGetCredentialsFromSecret   = "cannot get Composition pipeline step %q credential %q from Secret"
 	errFmtRunPipelineStep            = "cannot run Composition pipeline step %q"
 	errFmtControllerMismatch         = "refusing to delete composed resource %q that is controlled by %s %q"
-	errFmtCleanupLabelsCD            = "cannot cleanup composed resource labels of resource %q (a %s named %s)"
 	errFmtDeleteCD                   = "cannot delete composed resource %q (a %s named %s)"
 	errFmtUnmarshalDesiredCD         = "cannot unmarshal desired composed resource %q from RunFunctionResponse"
 	errFmtCDAsStruct                 = "cannot encode composed resource %q to protocol buffer Struct well-known type"
@@ -217,18 +215,18 @@ func WithManagedFieldsUpgrader(u ManagedFieldsUpgrader) FunctionComposerOption {
 
 // NewFunctionComposer returns a new Composer that supports composing resources using
 // both Patch and Transform (P&T) logic and a pipeline of Composition Functions.
-func NewFunctionComposer(cached, uncached client.Client, r FunctionRunner, o ...FunctionComposerOption) *FunctionComposer {
-	f := NewSecretConnectionDetailsFetcher(cached)
+func NewFunctionComposer(kube client.Client, r FunctionRunner, o ...FunctionComposerOption) *FunctionComposer {
+	f := NewSecretConnectionDetailsFetcher(kube)
 
 	c := &FunctionComposer{
-		client: cached,
+		client: kube,
 
 		composite: xr{
 			ConnectionDetailsFetcher:         f,
-			ComposedResourceObserver:         NewExistingComposedResourceObserver(cached, uncached, f),
-			ComposedResourceGarbageCollector: NewDeletingComposedResourceGarbageCollector(cached),
-			NameGenerator:                    names.NewNameGenerator(cached),
-			ManagedFieldsUpgrader:            NewPatchingManagedFieldsUpgrader(cached),
+			ComposedResourceObserver:         NewExistingComposedResourceObserver(kube, f),
+			ComposedResourceGarbageCollector: NewDeletingComposedResourceGarbageCollector(kube),
+			NameGenerator:                    names.NewNameGenerator(kube),
+			ManagedFieldsUpgrader:            NewPatchingManagedFieldsUpgrader(kube),
 		},
 
 		pipeline: r,
@@ -580,15 +578,14 @@ func ComposedFieldOwnerName(xr *composite.Unstructured) string {
 // any existing composed resources from the API server. It also loads their
 // connection details.
 type ExistingComposedResourceObserver struct {
-	cached   client.Reader
-	uncached client.Reader
+	resource client.Reader
 	details  managed.ConnectionDetailsFetcher
 }
 
 // NewExistingComposedResourceObserver returns a ComposedResourceGetter that
 // fetches an XR's existing composed resources.
-func NewExistingComposedResourceObserver(c, uc client.Reader, f managed.ConnectionDetailsFetcher) *ExistingComposedResourceObserver {
-	return &ExistingComposedResourceObserver{cached: c, uncached: uc, details: f}
+func NewExistingComposedResourceObserver(c client.Reader, f managed.ConnectionDetailsFetcher) *ExistingComposedResourceObserver {
+	return &ExistingComposedResourceObserver{resource: c, details: f}
 }
 
 // ObserveComposedResources begins building composed resource state by
@@ -614,14 +611,10 @@ func (g *ExistingComposedResourceObserver) ObserveComposedResources(ctx context.
 
 		r := composed.New(composed.FromReference(ref))
 		nn := types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}
-		err := g.cached.Get(ctx, nn, r)
+		err := g.resource.Get(ctx, nn, r)
 		if kerrors.IsNotFound(err) {
-			// We believe we created this resource, but it is not in the cache yet?  Try again without the cache.
-			err = g.uncached.Get(ctx, nn, r)
-			if kerrors.IsNotFound(err) {
-				// We believe we created this resource, but it no longer exists.
-				continue
-			}
+			// We believe we created this resource, but it doesn't exist.
+			continue
 		}
 		if err != nil {
 			return nil, errors.Wrap(err, errGetComposed)
@@ -758,14 +751,6 @@ func (d *DeletingComposedResourceGarbageCollector) GarbageCollectComposedResourc
 			return errors.Errorf(errFmtControllerMismatch, name, c.Kind, c.Name)
 		}
 
-		// Remove the labels that indicate this resource was owned by a
-		// Composition. This helps differentiate whether a resource was deleted
-		// due to garbage collection or because its owning composite was deleted.
-		meta.RemoveLabels(cd.Resource, xcrd.LabelKeyNamePrefixForComposed, xcrd.LabelKeyClaimName, xcrd.LabelKeyClaimNamespace)
-		if err := d.client.Update(ctx, cd.Resource); resource.IgnoreNotFound(err) != nil {
-			return errors.Wrapf(err, errFmtCleanupLabelsCD, name, cd.Resource.GetObjectKind().GroupVersionKind().Kind, cd.Resource.GetName())
-		}
-		// Delete the composed resource.
 		if err := d.client.Delete(ctx, cd.Resource); resource.IgnoreNotFound(err) != nil {
 			return errors.Wrapf(err, errFmtDeleteCD, name, cd.Resource.GetObjectKind().GroupVersionKind().Kind, cd.Resource.GetName())
 		}

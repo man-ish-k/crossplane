@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -86,8 +86,7 @@ type UsageStatus struct {
 // Read the Crossplane documentation for
 // [more information about Compositions](https://docs.crossplane.io/latest/concepts/usages).
 // +kubebuilder:object:root=true
-// +genclient
-// +genclient:nonNamespaced
+// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="DETAILS",type="string",JSONPath=".metadata.annotations.crossplane\\.io/usage-details"
 // +kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"

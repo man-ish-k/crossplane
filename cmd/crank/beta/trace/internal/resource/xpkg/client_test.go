@@ -27,8 +27,10 @@ import (
 // Consider testing getPackageDeps instead to cover more.
 func TestGetDependencyRef(t *testing.T) {
 	type args struct {
-		d    v1beta1.Dependency
-		pkgs []v1beta1.LockPackage
+		pkgType v1beta1.PackageType
+		pkg     string
+		client  client.Client
+		lock    *v1beta1.Lock
 	}
 	type want struct {
 		ref *v1.ObjectReference
@@ -37,26 +39,23 @@ func TestGetDependencyRef(t *testing.T) {
 	cases := map[string]struct {
 		reason string
 
-		client client.Client
-		args   args
-		want   want
+		args args
+		want want
 	}{
 		"PkgNotInLock": {
 			reason: "Should return the provider ref for a provider dependency, even when the dep is not found.",
-			client: &test.MockClient{},
 			args: args{
-				d: v1beta1.Dependency{
-					Type:    ptr.To(v1beta1.ProviderPackageType),
-					Package: "example.com/provider-1:v1.0.0",
-				},
-				pkgs: []v1beta1.LockPackage{
+				pkgType: v1beta1.ProviderPackageType,
+				pkg:     "example.com/provider-1:v1.0.0",
+				client:  &test.MockClient{},
+				lock: buildLock("lock-1", withLockPackages([]v1beta1.LockPackage{
 					*buildLockPkg("configuration-1",
 						withDependencies(newDependency("provider-2"), newDependency("provider-1")),
 						withSource("example.com/configuration-1:v1.0.0")),
 					*buildLockPkg("function-1",
 						withDependencies(newDependency("provider-3"), newDependency("provider-4")),
 						withSource("example.com/function-1:v1.0.0")),
-				},
+				}...)),
 			},
 			want: want{
 				ref: &v1.ObjectReference{
@@ -68,33 +67,36 @@ func TestGetDependencyRef(t *testing.T) {
 		},
 		"PKGInLock": {
 			reason: "Should return the provider ref for a provider dependency.",
-			client: &test.MockClient{
-				MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
-					obj.SetName("provider-1")
-					obj.SetOwnerReferences([]xpv1.OwnerReference{
-						{
-							APIVersion: "pkg.crossplane.io/v1",
-							Kind:       "Provider",
-							Name:       "my-awesome-provider",
-							Controller: ptr.To(true),
-						},
-					})
-					return nil
-				}),
-			},
 			args: args{
-				d: v1beta1.Dependency{
-					Type:    ptr.To(v1beta1.ProviderPackageType),
-					Package: "example.com/provider-1:v1.0.0",
+				pkgType: v1beta1.ProviderPackageType,
+				pkg:     "example.com/provider-1:v1.0.0",
+				client: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
+						pr, ok := obj.(*xpkgv1.ProviderRevision)
+						if ok {
+							pr.SetName("provider-1")
+							pr.SetOwnerReferences([]xpv1.OwnerReference{
+								{
+									APIVersion: "pkg.crossplane.io/v1",
+									Kind:       "Provider",
+									Name:       "my-awesome-provider",
+									Controller: ptr.To(true),
+								},
+							})
+							return nil
+						}
+
+						return errors.New("boom")
+					}),
 				},
-				pkgs: []v1beta1.LockPackage{
+				lock: buildLock("lock-1", withLockPackages([]v1beta1.LockPackage{
 					*buildLockPkg("provider-3",
 						withDependencies(newDependency("provider-2"), newDependency("provider-1")),
 						withSource("example.com/provider-1:v1.0.0")),
 					*buildLockPkg("function-1",
 						withDependencies(newDependency("provider-3"), newDependency("provider-4")),
 						withSource("example.com/function-1:v1.0.0")),
-				},
+				}...)),
 			},
 			want: want{
 				ref: &v1.ObjectReference{
@@ -106,12 +108,11 @@ func TestGetDependencyRef(t *testing.T) {
 		},
 		"PKGTypeWrong": {
 			reason: "Should return an error for a provider dependency when the package type is wrong.",
-			client: test.NewMockClient(),
 			args: args{
-				d: v1beta1.Dependency{
-					Type:    ptr.To(v1beta1.PackageType("wrong")),
-					Package: "example.com/provider-1:v1.0.0",
-				},
+				pkgType: v1beta1.PackageType("wrong"),
+				pkg:     "example.com/provider-1:v1.0.0",
+				client:  test.NewMockClient(),
+				lock:    buildLock("lock-1"),
 			},
 			want: want{
 				err: cmpopts.AnyError,
@@ -119,22 +120,20 @@ func TestGetDependencyRef(t *testing.T) {
 		},
 		"ErrorGettingPKGRevision": {
 			reason: "Should return an error for a provider dependency when the package revision cannot be retrieved.",
-			client: &test.MockClient{
-				MockGet: test.NewMockGetFn(errors.New("boom")),
-			},
 			args: args{
-				d: v1beta1.Dependency{
-					Type:    ptr.To(v1beta1.ConfigurationPackageType),
-					Package: "example.com/configuration-1:v1.0.0",
+				pkgType: v1beta1.ConfigurationPackageType,
+				pkg:     "example.com/configuration-1:v1.0.0",
+				client: &test.MockClient{
+					MockGet: test.NewMockGetFn(errors.New("boom")),
 				},
-				pkgs: []v1beta1.LockPackage{
+				lock: buildLock("lock-1", withLockPackages([]v1beta1.LockPackage{
 					*buildLockPkg("configuration-1",
 						withDependencies(newDependency("provider-2"), newDependency("provider-1")),
 						withSource("example.com/configuration-1:v1.0.0")),
 					*buildLockPkg("function-1",
 						withDependencies(newDependency("provider-3"), newDependency("provider-4")),
 						withSource("example.com/function-1:v1.0.0")),
-				},
+				}...)),
 			},
 			want: want{
 				err: cmpopts.AnyError,
@@ -142,24 +141,22 @@ func TestGetDependencyRef(t *testing.T) {
 		},
 		"PKGRevisionNotFound": {
 			reason: "Should return no error for a provider dependency when the package revision is not found.",
-			client: &test.MockClient{
-				MockGet: test.NewMockGetFn(nil, func(_ client.Object) error {
-					return kerrors.NewNotFound(schema.GroupResource{}, "whatever")
-				}),
-			},
 			args: args{
-				d: v1beta1.Dependency{
-					Type:    ptr.To(v1beta1.FunctionPackageType),
-					Package: "example.com/function-1:v1.0.0",
+				pkgType: v1beta1.FunctionPackageType,
+				pkg:     "example.com/function-1:v1.0.0",
+				client: &test.MockClient{
+					MockGet: test.NewMockGetFn(nil, func(_ client.Object) error {
+						return kerrors.NewNotFound(schema.GroupResource{}, "whatever")
+					}),
 				},
-				pkgs: []v1beta1.LockPackage{
+				lock: buildLock("lock-1", withLockPackages([]v1beta1.LockPackage{
 					*buildLockPkg("configuration-1",
 						withDependencies(newDependency("provider-2"), newDependency("provider-1")),
 						withSource("example.com/configuration-1:v1.0.0")),
 					*buildLockPkg("function-1",
 						withDependencies(newDependency("provider-3"), newDependency("provider-4")),
 						withSource("example.com/function-1:v1.0.0")),
-				},
+				}...)),
 			},
 			want: want{
 				err: nil,
@@ -174,9 +171,9 @@ func TestGetDependencyRef(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			kc := &Client{
-				client: tc.client,
+				client: tc.args.client,
 			}
-			got, err := kc.getDependencyRef(context.Background(), tc.args.d, tc.args.pkgs)
+			got, err := kc.getDependencyRef(context.Background(), tc.args.lock, tc.args.pkgType, tc.args.pkg)
 			if diff := cmp.Diff(tc.want.err, err, cmpopts.EquateErrors()); diff != "" {
 				t.Errorf("getDependencyRef(...) error = %v, wantErr %v", err, tc.want.err)
 			}
@@ -277,9 +274,9 @@ func TestGetPackageDeps(t *testing.T) {
 			args: args{
 				client: &test.MockClient{
 					MockGet: test.NewMockGetFn(nil, func(obj client.Object) error {
-						u, ok := obj.(*unstructured.Unstructured)
-						if ok && u.GetKind() == "ProviderRevision" {
-							u.SetOwnerReferences([]xpv1.OwnerReference{
+						pr, ok := obj.(*xpkgv1.ProviderRevision)
+						if ok {
+							pr.SetOwnerReferences([]xpv1.OwnerReference{
 								{
 									APIVersion: xpkgv1.ProviderGroupVersionKind.GroupVersion().String(),
 									Kind:       xpkgv1.ProviderKind,
@@ -392,7 +389,7 @@ type dependencyOpts func(d *v1beta1.Dependency)
 
 func withPackageType(pkgType v1beta1.PackageType) dependencyOpts {
 	return func(d *v1beta1.Dependency) {
-		d.Type = ptr.To(pkgType)
+		d.Type = pkgType
 	}
 }
 
